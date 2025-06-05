@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  github-bot:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - DATABASE_URL=postgresql://github_bot:password@cockroachdb:26257/github_bot?sslmode=disable
+      - BIND_ADDRESS=0.0.0.0:3000
+      - BOT_NAME=bot
+      - RUST_LOG=info
+    depends_on:
+      - cockroachdb
+    restart: unless-stopped
+
+  cockroachdb:
+    image: cockroachdb/cockroach:v23.1.0
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    command: start-single-node --insecure
+    volumes:
+      - cockroach-data:/cockroach/cockroach-data
+    environment:
+      - COCKROACH_DATABASE=github_bot
+      - COCKROACH_USER=github_bot
+    restart: unless-stopped
+
+  # Initialize database
+  db-init:
+    image: cockroachdb/cockroach:v23.1.0
+    depends_on:
+      - cockroachdb
+    command: >
+      bash -c "
+        sleep 10 &&
+        cockroach sql --insecure --host=cockroachdb:26257 --execute='CREATE DATABASE IF NOT EXISTS github_bot;' &&
+        cockroach sql --insecure --host=cockroachdb:26257 --execute=\"CREATE USER IF NOT EXISTS github_bot; GRANT ALL ON DATABASE github_bot TO github_bot;\"
+      "
+    restart: "no"
+
+volumes:
+  cockroach-data:
